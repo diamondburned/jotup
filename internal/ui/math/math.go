@@ -1,9 +1,6 @@
 package math
 
 import (
-	"log"
-	"time"
-
 	"github.com/diamondburned/gotk4-lasem/pkg/lasem"
 	"github.com/diamondburned/gotk4/pkg/cairo"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
@@ -22,14 +19,54 @@ func init() {
 	emptyDOM = d
 }
 
+// MathTransformer extends a MathView to also allow transforming from arbitrary
+// texts to MathML.
+type MathTransformer struct {
+	*MathView
+	transform func(string) (string, error)
+	text      string
+}
+
+// NewMathTransformer creates a new empty MathTransformer.
+func NewMathTransformer() *MathTransformer {
+	t := MathTransformer{MathView: NewMathView()}
+	return &t
+}
+
+// SetTransformer sets the transformer function.
+func (t *MathTransformer) SetTransformer(f func(string) (string, error)) {
+	t.transform = f
+	t.ShowText(t.text)
+}
+
+// ShowText puts text through the transform function and calls ShowMathML.
+func (t *MathTransformer) ShowText(text string) {
+	t.text = text
+
+	if t.transform == nil {
+		// No transform function. Assume empty.
+		t.setDOMDocument(emptyDOM)
+		return
+	}
+
+	mathml, err := t.transform(t.text)
+	if err != nil {
+		t.ShowError(err)
+		return
+	}
+
+	t.ShowMathML(mathml)
+}
+
 // MathView is a DrawingArea canvas that renders math.
 type MathView struct {
 	*gtk.Stack
 	area  *gtk.DrawingArea
 	error *errorView
 
-	dom   *lasem.DOMDocument
-	view  *lasem.DOMView
+	dom  *lasem.DOMDocument
+	view *lasem.DOMView
+
 	color [4]float64 // RGBA
 	size  [2]int
 }
@@ -59,9 +96,9 @@ func NewMathView() *MathView {
 				float64(fg.Blue()),
 				float64(fg.Alpha()),
 			}
-			v.QueueDraw()
+			v.setDOMDocument(v.dom)
 		} else {
-			log.Println("no theme_fg_color")
+			panic("BUG: missing theme_fg_color")
 		}
 	})
 
@@ -81,12 +118,13 @@ func (v *MathView) ShowError(err error) {
 
 // SetMathML sets the MathML data to render.
 func (v *MathView) ShowMathML(data string) {
-	t := time.Now()
-	defer func() { log.Println("MathML DOM render took", time.Since(t)) }()
+	if data == "" {
+		v.setDOMDocument(emptyDOM)
+		return
+	}
 
 	d, err := lasem.NewDOMDocumentFromMemory(data)
 	if err != nil {
-		v.setDOMDocument(nil)
 		v.ShowError(err)
 		return
 	}
@@ -98,11 +136,10 @@ func (v *MathView) setDOMDocument(d *lasem.DOMDocument) {
 	if d == nil {
 		d = emptyDOM
 	}
-
 	v.dom = d
 
 	// Set the colors.
-	if d != emptyDOM && d.HasChildNodes() {
+	if d != emptyDOM {
 		mlElem, ok := d.DocumentElement().(*lasem.MathMLMathElement)
 		if ok {
 			style := mlElem.DefaultStyle()

@@ -2,6 +2,8 @@ module github.com/diamondburned/jotup
 
 go 1.17
 
+replace github.com/diamondburned/gotk4-lasem/pkg => ../gotk4-lasem/pkg
+
 require (
 	github.com/diamondburned/adaptive v0.0.2-0.20220226002257-ef8720b54399
 	github.com/diamondburned/gotk4-lasem/pkg v0.0.0-20220303014905-20a0728c64dc

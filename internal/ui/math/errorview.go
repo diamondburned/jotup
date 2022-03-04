@@ -15,6 +15,7 @@ var errorCSS = cssutil.Applier("math-error", `
 		border: 1px solid @error_color;
 		color:  @error_color;
 		font-family: serif;
+		padding: 0.5em;
 	}
 `)
 

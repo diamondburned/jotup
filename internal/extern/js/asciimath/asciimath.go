@@ -3,6 +3,7 @@ package asciimath
 import (
 	"context"
 	"log"
+	"regexp"
 	"time"
 
 	_ "embed"
@@ -14,9 +15,7 @@ import (
 
 const src = "git+https://github.com/ForbesLindesay/ascii-math.git"
 
-var renderProgram = goja.MustCompile("", `
-	(function() { return ascii_math(str).toString() })()
-`, false)
+var renderProgram = goja.MustCompile("", `ascii_math(str).toString()`, false)
 
 // Module is a KaTeX execution module.
 type Module struct {
@@ -34,6 +33,8 @@ func NewModule(ctx context.Context) (*Module, error) {
 	return &m, nil
 }
 
+var trimTagRegex = regexp.MustCompile(`^<math.*?>`)
+
 // Render renders the given LaTeX string (in KaTeX variant). The returned string
 // is in MathML format.
 func (m *Module) Render(asciimath string) (string, error) {
@@ -49,8 +50,10 @@ func (m *Module) Render(asciimath string) (string, error) {
 		return "", err
 	}
 
-	ml := v.Export().(string)
-	return ml, nil
+	s := v.Export().(string)
+	s = trimTagRegex.ReplaceAllLiteralString(s, "<math>")
+
+	return s, nil
 }
 
 func must(err error) {
