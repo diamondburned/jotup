@@ -22,10 +22,11 @@ func newErrorView() *errorView {
 	v := errorView{}
 	v.Label = gtk.NewLabel("")
 	v.AddCSSClass("math-error")
+	v.SetWrap(true)
 	v.SetWrapMode(pango.WrapWordChar)
 	v.SetMaxWidthChars(72)
-	// Prevent Label from stretching parent container.
-	v.SetLayoutManager(gtk.NewFixedLayout())
+	v.SetHAlign(gtk.AlignCenter)
+	v.SetVAlign(gtk.AlignCenter)
 	return &v
 }
 

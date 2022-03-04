@@ -10,7 +10,7 @@ import (
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/diamondburned/gotkit/app"
-	"github.com/diamondburned/jotup/internal/extern/js/katex"
+	"github.com/diamondburned/jotup/internal/extern/js/asciimath"
 	"github.com/diamondburned/jotup/internal/ui/math"
 )
 
@@ -43,30 +43,31 @@ func activate(ctx context.Context) {
 	latexs.SetChild(latex)
 
 	lbuf := latex.Buffer()
-	lbuf.SetText("\\R")
+	lbuf.SetText("R")
 
-	var katexMod *katex.Module
+	var asciimathMod *asciimath.Module
 	rerender := func() {
-		if katexMod == nil {
+		if asciimathMod == nil {
 			return
 		}
 
 		start, end := lbuf.Bounds()
 		text := lbuf.Text(start, end, false)
 
-		m, err := katexMod.Render(text, true)
+		m, err := asciimathMod.Render(text)
 		if err != nil {
 			mathv.ShowError(err)
 			return
 		}
+		log.Print("MathML output:\n", m)
 		mathv.ShowMathML(m)
 	}
 
 	lbuf.ConnectChanged(rerender)
 	go func() {
 		t := time.Now()
-		m, err := katex.NewModule(ctx)
-		log.Println("katex.NewModule took", time.Since(t))
+		m, err := asciimath.NewModule(ctx)
+		log.Println("asciimath.NewModule took", time.Since(t))
 
 		if err != nil {
 			glib.IdleAdd(func() { loadable.SetError(err) })
@@ -74,18 +75,19 @@ func activate(ctx context.Context) {
 		}
 
 		glib.IdleAdd(func() {
-			katexMod = m
+			asciimathMod = m
 			loadable.SetChild(maths)
 			rerender()
 		})
 	}()
 
-	grid := gtk.NewGrid()
-	grid.Attach(latexs, 0, 0, 1, 1)
-	grid.Attach(loadable, 1, 0, 1, 1)
+	box := gtk.NewBox(gtk.OrientationHorizontal, 0)
+	box.SetHomogeneous(true)
+	box.Append(latexs)
+	box.Append(loadable)
 
 	win := app.NewWindow()
 	win.SetTitle("Scratch")
-	win.SetChild(grid)
+	win.SetChild(box)
 	win.Show()
 }

@@ -86,6 +86,7 @@ func (v *MathView) ShowMathML(data string) {
 
 	d, err := lasem.NewDOMDocumentFromMemory(data)
 	if err != nil {
+		v.setDOMDocument(nil)
 		v.ShowError(err)
 		return
 	}
@@ -94,10 +95,14 @@ func (v *MathView) ShowMathML(data string) {
 }
 
 func (v *MathView) setDOMDocument(d *lasem.DOMDocument) {
+	if d == nil {
+		d = emptyDOM
+	}
+
 	v.dom = d
 
 	// Set the colors.
-	if d != emptyDOM {
+	if d != emptyDOM && d.HasChildNodes() {
 		mlElem, ok := d.DocumentElement().(*lasem.MathMLMathElement)
 		if ok {
 			style := mlElem.DefaultStyle()

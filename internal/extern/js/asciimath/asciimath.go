@@ -1,9 +1,8 @@
-package katex
+package asciimath
 
 import (
 	"context"
 	"log"
-	"strings"
 	"time"
 
 	_ "embed"
@@ -13,16 +12,10 @@ import (
 	"github.com/pkg/errors"
 )
 
-const src = "https://cdn.jsdelivr.net/npm/katex@0.15.2/dist/katex.min.js"
+const src = "git+https://github.com/ForbesLindesay/ascii-math.git"
 
 var renderProgram = goja.MustCompile("", `
-	(function() {
-		return katex.renderToString(str, {
-			output: "mathml",
-			displayMode: displayMode,
-			throwOnError: true,
-		})
-	})()
+	(function() { return ascii_math(str).toString() })()
 `, false)
 
 // Module is a KaTeX execution module.
@@ -43,12 +36,11 @@ func NewModule(ctx context.Context) (*Module, error) {
 
 // Render renders the given LaTeX string (in KaTeX variant). The returned string
 // is in MathML format.
-func (m *Module) Render(latex string, displayMode bool) (string, error) {
-	must(m.rt.Set("str", latex))
-	must(m.rt.Set("displayMode", displayMode))
+func (m *Module) Render(asciimath string) (string, error) {
+	must(m.rt.Set("str", asciimath))
 
 	t := time.Now()
-	defer func() { log.Println("KaTeX render took", time.Since(t)) }()
+	defer func() { log.Println("ASCIIMath render took", time.Since(t)) }()
 
 	// KaTeX should absolutely not throw unless something really bad happened.
 	// Not too sure if panicking here is a good idea.
@@ -58,9 +50,6 @@ func (m *Module) Render(latex string, displayMode bool) (string, error) {
 	}
 
 	ml := v.Export().(string)
-	ml = strings.TrimPrefix(ml, `<span class="katex">`)
-	ml = strings.TrimSuffix(ml, `</span>`)
-
 	return ml, nil
 }
 
