@@ -53,6 +53,18 @@ func (r Renderers) With(other Renderers) Renderers {
 // additional ContainerStates recursed into the Node.
 type RenderFunc func(context.Context, *ContainerState) (WidgetChild, ast.WalkStatus)
 
+var defaultRenderers = make(Renderers)
+
+// RegisterDefaultRenderer registers a default renderer for a Markdown node
+// kind. If the function is called on an existing node, then it panics.
+func RegisterDefaultRenderer(kind ast.NodeKind, f RenderFunc) {
+	_, ok := defaultRenderers[kind]
+	if ok {
+		panic("duplicate handler for " + kind.String())
+	}
+	defaultRenderers[kind] = f
+}
+
 // MarkdownViewer is a widget that renders a Markdown AST node into widgets. All
 // widgets within the viewer are strictly immutable.
 type MarkdownViewer struct {

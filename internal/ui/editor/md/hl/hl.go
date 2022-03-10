@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -16,14 +15,13 @@ import (
 	"github.com/alecthomas/chroma/styles"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/diamondburned/gotk4/pkg/pango"
-	"github.com/diamondburned/gotktrix/internal/app"
-	"github.com/diamondburned/gotktrix/internal/config"
-	"github.com/diamondburned/gotktrix/internal/config/prefs"
-	"github.com/diamondburned/gotktrix/internal/gtkutil/markuputil"
+	"github.com/diamondburned/gotkit/app"
+	"github.com/diamondburned/gotkit/app/prefs"
+	"github.com/diamondburned/gotkit/gtkutil/textutil"
 	"github.com/pkg/errors"
 )
 
-var stylePath = config.Path("styles")
+// var stylePath = config.Path("styles")
 
 var Style = prefs.NewString("", prefs.StringMeta{
 	Name:    "Code Highlight Style",
@@ -31,18 +29,7 @@ var Style = prefs.NewString("", prefs.StringMeta{
 	Description: "For reference, see the " +
 		`<a href="https://xyproto.github.io/splash/docs/all.html">Chroma Style Gallery</a>.`,
 	Placeholder: "Leave blank for default",
-	Validate: func(style string) error {
-		_, err := findStyle(style)
-		return err
-	},
 })
-
-func init() {
-	Style.SubscribeInit(updateGlobal)
-	// Realistically the user will never see it when the thing isn't
-	// initialized, anyway.
-	go updateGlobal()
-}
 
 // Styles used if the user hasn't set a style in the config.
 const (
@@ -51,7 +38,7 @@ const (
 )
 
 // tagMap is a map from chroma token types to text tag attributes.
-type tagMap map[chroma.TokenType]markuputil.TextTag
+type tagMap map[chroma.TokenType]textutil.TextTag
 
 var defaultStyles struct {
 	darkMap   tagMap
@@ -70,7 +57,7 @@ func defaultTagMap(darkThemed bool) tagMap {
 
 func darkThemeTagMap() tagMap {
 	defaultStyles.darkOnce.Do(func() {
-		s, err := findStyle(DefaultDarkStyle)
+		s, err := findStyle(context.Background(), DefaultDarkStyle)
 		if err != nil {
 			log.Println("hl: built-in dark style", DefaultDarkStyle, "not found")
 			s = styles.Fallback
@@ -82,7 +69,7 @@ func darkThemeTagMap() tagMap {
 
 func lightThemeTagMap() tagMap {
 	defaultStyles.lightOnce.Do(func() {
-		s, err := findStyle(DefaultLightStyle)
+		s, err := findStyle(context.Background(), DefaultLightStyle)
 		if err != nil {
 			log.Println("hl: built-in dark style", DefaultLightStyle, "not found")
 			s = styles.Fallback
@@ -92,32 +79,16 @@ func lightThemeTagMap() tagMap {
 	return defaultStyles.lightMap
 }
 
-var (
-	lexerMu    sync.Mutex
-	lexerCache sync.Map
-)
-
-var globalTag struct {
-	sync.RWMutex
-	tags tagMap
-}
-
-func updateGlobal() {
-	s, err := findStyle(Style.Value())
+func mustStyle(ctx context.Context, theme string) *chroma.Style {
+	style, err := findStyle(ctx, theme)
 	if err != nil {
-		log.Panicln("hl: failed to parse default style:", err)
+		log.Printf("highlight: cannot load style %q: %v", theme, err)
+		return styles.Fallback
 	}
-
-	globalTag.Lock()
-	if s == styles.Fallback {
-		globalTag.tags = nil
-	} else {
-		globalTag.tags = convertStyle(s)
-	}
-	globalTag.Unlock()
+	return style
 }
 
-func findStyle(theme string) (*chroma.Style, error) {
+func findStyle(ctx context.Context, theme string) (*chroma.Style, error) {
 	s := styles.Get(theme)
 	if s != styles.Fallback {
 		return s, nil
@@ -127,7 +98,12 @@ func findStyle(theme string) (*chroma.Style, error) {
 		return styles.Fallback, nil
 	}
 
-	d, err := os.ReadFile(filepath.Join(stylePath, theme+".json"))
+	app := app.FromContext(ctx)
+	if app == nil {
+		return styles.Fallback, nil
+	}
+
+	d, err := os.ReadFile(app.ConfigPath("styles", theme+".json"))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("unknown style %s", theme)
@@ -169,8 +145,8 @@ func convertStyle(style *chroma.Style) tagMap {
 	return tags
 }
 
-func styleEntryToTag(e chroma.StyleEntry) markuputil.TextTag {
-	attrs := make(markuputil.TextTag, 5)
+func styleEntryToTag(e chroma.StyleEntry) textutil.TextTag {
+	attrs := make(textutil.TextTag, 5)
 
 	if e.Colour.IsSet() {
 		attrs["foreground"] = e.Colour.String()
@@ -227,6 +203,11 @@ func Highlight(ctx context.Context, start, end *gtk.TextIter, language string) {
 
 	end.SetOffset(endOffset)
 }
+
+var (
+	lexerMu    sync.Mutex
+	lexerCache sync.Map
+)
 
 func lexer(lang string) chroma.Lexer {
 	v, ok := lexerCache.Load(lang)
@@ -286,12 +267,11 @@ func newFormatter(
 	ctx context.Context,
 	buf *gtk.TextBuffer, start, end *gtk.TextIter, lang string) formatter {
 
-	globalTag.RLock()
-	tokenTags := globalTag.tags
-	globalTag.RUnlock()
-
-	if tokenTags == nil {
-		isDark := markuputil.IsDarkTheme(app.GTKWindowFromContext(ctx))
+	var tokenTags tagMap
+	if theme := Style.Value(); theme != "" {
+		tokenTags = convertStyle(mustStyle(ctx, theme))
+	} else {
+		isDark := textutil.IsDarkTheme(app.GTKWindowFromContext(ctx))
 		tokenTags = defaultTagMap(isDark)
 	}
 
@@ -359,7 +339,7 @@ func (f *formatter) tag(tt chroma.TokenType) *gtk.TextTag {
 	return tag
 }
 
-func (f *formatter) tagAttrs(tt chroma.TokenType) markuputil.TextTag {
+func (f *formatter) tagAttrs(tt chroma.TokenType) textutil.TextTag {
 	c, ok := f.tokenTags[tt]
 	if ok {
 		return c

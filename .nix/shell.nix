@@ -14,6 +14,7 @@ in shell.overrideAttrs (old: {
 	buildInputs = with pkgs; [
 		gtk4
 		glib
+		gtksourceview5
 		graphene
 		gdk-pixbuf
 		gobjectIntrospection

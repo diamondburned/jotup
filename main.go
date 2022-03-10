@@ -2,17 +2,25 @@ package main
 
 import (
 	"context"
+	"log"
 	"os"
 
+	"github.com/diamondburned/adaptive"
+	"github.com/diamondburned/gotk4-sourceview/pkg/gtksource/v5"
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/diamondburned/gotkit/app"
 	"github.com/diamondburned/jotup/internal/extern/js/asciimath"
+	"github.com/diamondburned/jotup/internal/ui/filetree"
 	"github.com/diamondburned/jotup/internal/ui/math"
 )
 
 func main() {
 	app := app.New("com.diamondburned.jotup", "Jotup")
+	app.ConnectActivate(func(context.Context) {
+		gtksource.Init()
+		adaptive.Init()
+	})
 	app.ConnectActivate(activate)
 
 	os.Exit(app.Run(context.Background(), os.Args))
@@ -21,7 +29,23 @@ func main() {
 func activate(ctx context.Context) {
 	app := app.FromContext(ctx)
 
-	latex := gtk.NewTextView()
+	tree := filetree.NewTree(ctx)
+	tree.Load("/home/diamond/Music")
+
+	win := app.NewWindow()
+	win.SetTitle("Scratch")
+	win.SetChild(tree)
+	win.Show()
+}
+
+func activate2(ctx context.Context) {
+	app := app.FromContext(ctx)
+
+	langman := gtksource.LanguageManagerGetDefault()
+	llatex := langman.Language("latex")
+
+	lbuffer := gtksource.NewBufferWithLanguage(llatex)
+	latex := gtksource.NewViewWithBuffer(lbuffer)
 
 	latexs := gtk.NewScrolledWindow()
 	latexs.SetHExpand(true)
@@ -68,4 +92,12 @@ func activate(ctx context.Context) {
 	win.SetTitle("Scratch")
 	win.SetChild(box)
 	win.Show()
+
+	fchoose := gtk.NewFileChooserNative("test", &win.Window, gtk.FileChooserActionSelectFolder, "Choose", "Cancel")
+	fchoose.ConnectResponse(func(resp int) {
+		if resp == int(gtk.ResponseAccept) {
+			log.Println("path =", fchoose.File().Path())
+		}
+	})
+	fchoose.Show()
 }
