@@ -13,8 +13,8 @@ import (
 	"github.com/diamondburned/gotkit/app"
 	"github.com/diamondburned/gotkit/app/prefs"
 	"github.com/diamondburned/gotkit/gtkutil/cssutil"
-	"github.com/diamondburned/jotup/internal/md"
-	"github.com/diamondburned/jotup/internal/md/hl"
+	"github.com/diamondburned/jotup/internal/ui/editor/md"
+	"github.com/diamondburned/jotup/internal/ui/editor/md/hl"
 	"github.com/yuin/goldmark/ast"
 	"golang.org/x/net/html"
 )

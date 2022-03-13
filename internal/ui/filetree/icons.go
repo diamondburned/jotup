@@ -3,8 +3,21 @@ package filetree
 import "strings"
 
 var iconExts = map[string]map[string]struct{}{
-	"audio-x-generic-symbolic": {},
-	"video-x-generic-symbolic": {},
+	"audio-x-generic-symbolic": strset(
+		"flac",
+		"opus",
+		"mp3",
+		"ogg",
+		"oga",
+		"m4a",
+		"wav",
+	),
+	"video-x-generic-symbolic": strset(
+		"mp4",
+		"flv",
+		"mkv",
+		"webm",
+	),
 	"image-x-generic-symbolic": strset(
 		"jpg",
 		"jpe",
