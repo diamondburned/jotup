@@ -3,12 +3,15 @@ module github.com/diamondburned/jotup
 go 1.17
 
 replace github.com/diamondburned/gotk4-lasem/pkg => ../gotk4-lasem/pkg
+replace github.com/diamondburned/gotkit => ../gotkit
 
 require (
 	github.com/alecthomas/chroma v0.10.0
+	github.com/diamondburned/adaptive v0.0.2-0.20220310010129-223946f508ed
 	github.com/diamondburned/gotk4-lasem/pkg v0.0.0-20220303014905-20a0728c64dc
+	github.com/diamondburned/gotk4-sourceview/pkg v0.0.0-20220306222419-7ffb5ae56adf
 	github.com/diamondburned/gotk4/pkg v0.0.0-20220305042118-cfb7981704dc
-	github.com/diamondburned/gotkit v0.0.0-20220301082030-395dbae7eb6d
+	github.com/diamondburned/gotkit v0.0.0-20220311085936-5cbf9f466027
 	github.com/dop251/goja v0.0.0-20220214123719-b09a6bfa842f
 	github.com/dop251/goja_nodejs v0.0.0-20210225215109-d91c329300e7
 	github.com/go-git/go-git/v5 v5.4.2
@@ -21,8 +24,6 @@ require (
 	github.com/Microsoft/go-winio v0.4.16 // indirect
 	github.com/ProtonMail/go-crypto v0.0.0-20210428141323-04723f9f07d7 // indirect
 	github.com/acomagu/bufpipe v1.0.3 // indirect
-	github.com/diamondburned/adaptive v0.0.2-0.20220310010129-223946f508ed // indirect
-	github.com/diamondburned/gotk4-sourceview/pkg v0.0.0-20220306222419-7ffb5ae56adf // indirect
 	github.com/dlclark/regexp2 v1.4.1-0.20201116162257-a2a8dda75c91 // indirect
 	github.com/emirpasic/gods v1.12.0 // indirect
 	github.com/go-git/gcfg v1.5.0 // indirect
