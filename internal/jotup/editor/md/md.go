@@ -2,6 +2,8 @@
 package md
 
 import (
+	"strings"
+
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/diamondburned/gotk4/pkg/pango"
 	"github.com/diamondburned/gotkit/app/prefs"
@@ -87,4 +89,23 @@ func htag(scale float64) textutil.TextTag {
 		"scale":  scale,
 		"weight": pango.WeightBold,
 	}
+}
+
+// TrimmedText is a segment of a string with its surrounding spaces trimmed. The
+// number of spaces trimmed are recorded into the Left and Right fields.
+type TrimmedText struct {
+	Text  string
+	Left  int
+	Right int
+}
+
+// TrimNewLines trims new lines surrounding str into TrimmedText.
+func TrimNewLines(str string) TrimmedText {
+	rhs := len(str) - len(strings.TrimRight(str, "\n"))
+	str = strings.TrimRight(str, "\n")
+
+	lhs := len(str) - len(strings.TrimLeft(str, "\n"))
+	str = strings.TrimLeft(str, "\n")
+
+	return TrimmedText{str, lhs, rhs}
 }

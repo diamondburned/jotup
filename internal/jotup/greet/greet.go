@@ -133,7 +133,7 @@ func NewView(ctx context.Context, open func(string)) *View {
 	button := Button{
 		Title: "Open Folder...",
 		Icon:  "folder-new-symbolic",
-		Func:  v.promptOpenFolder,
+		Func:  v.PromptOpenFolder,
 	}
 	v.Right.Box.Append(v.Right.Subtitle)
 	v.Right.Box.Append(button.widget())
@@ -200,7 +200,8 @@ func NewView(ctx context.Context, open func(string)) *View {
 	return &v
 }
 
-func (v *View) promptOpenFolder() {
+// PromptOpenFolder prompts the user to choose a folder to be opened.
+func (v *View) PromptOpenFolder() {
 	chooser := gtk.NewFileChooserNative(
 		"Open Folder", &app.WindowFromContext(v.ctx).Window,
 		gtk.FileChooserActionSelectFolder, "Open", "Cancel",
@@ -221,7 +222,7 @@ func (v *View) promptOpenFolder() {
 // RecentPaths returns the most recent paths.
 func (v *View) RecentPaths() []string {
 	if v.pathFreqs == nil {
-		cfg := kvstate.AcquireConfig(v.ctx, "greet")
+		cfg := kvstate.AcquireConfig(v.ctx, "greet.json")
 		cfg.Get("path_frequencies", &v.pathFreqs)
 	}
 
@@ -257,7 +258,7 @@ cleanup:
 		v.pathFreqs = v.pathFreqs[:keepRecentPaths]
 	}
 
-	cfg := kvstate.AcquireConfig(v.ctx, "greet")
+	cfg := kvstate.AcquireConfig(v.ctx, "greet.json")
 	cfg.Set("path_frequencies", v.pathFreqs)
 }
 

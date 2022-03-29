@@ -162,14 +162,17 @@ type TreeDir struct {
 
 	// temp is nilable.
 	temp *gtk.TreeIter
+	// load is nilable.
+	load chan struct{}
 
-	unsaved    int
-	refreshing bool
+	unsaved int
 }
 
 func newTreeDir(store *gtk.TreeStore, root *gtk.TreeIter, path string) *TreeDir {
-	dir := TreeDir{TreeFile: *newTreeFile(store, root, path)}
-	dir.temp = store.Append(root)
+	dir := TreeDir{
+		TreeFile: *newTreeFile(store, root, path),
+		temp:     store.Append(root),
+	}
 	return &dir
 }
 
@@ -182,9 +185,14 @@ func (d *TreeDir) Clear() {
 	}
 }
 
+// IsInitialized returns true if TreeDir is being initialized or
+func (d *TreeDir) IsInitialized() bool {
+	return d.load == nil && d.child != nil
+}
+
 // Init initializes the directory asynchronously if it hasn't been already.
 func (d *TreeDir) Init(ctx context.Context, done func()) {
-	if !d.refreshing && d.child == nil {
+	if !d.IsInitialized() {
 		d.Refresh(ctx, done)
 		return
 	}
@@ -192,23 +200,53 @@ func (d *TreeDir) Init(ctx context.Context, done func()) {
 }
 
 // Refresh refresshes the directory. If the directory contains expanded children
-// directories, then it's refreshed as well.
+// directories, then it's refreshed as well. If the TreeDir is already
+// reloading, then done will be queued up and called once that loading is done.
 func (d *TreeDir) Refresh(ctx context.Context, done func()) {
 	d.refresh(ctx, done)
 }
 
 func (d *TreeDir) refresh(ctx context.Context, done func()) {
+	if d.load != nil {
+		// Make a copy of the load channel for us. We don't want to read the
+		// field in a goroutine.
+		go func(load chan struct{}) {
+			select {
+			case <-ctx.Done():
+				return
+			case <-load:
+				glib.IdleAdd(done)
+			}
+		}(d.load)
+		return
+	}
+
+	// We're not currently loading. Create a load channel so goroutines can wait
+	// for the load.
+	load := make(chan struct{})
+	d.load = load
+
+	d.refreshOnce(ctx, func() {
+		// Close our load channel to unblock all waiting goroutines.
+		close(load)
+
+		// If TreeDir still has our load channel, then we nil it. Otherwise,
+		// leave it be because it's not ours.
+		if d.load == load {
+			d.load = nil
+		}
+
+		done()
+	})
+}
+
+func (d *TreeDir) refreshOnce(ctx context.Context, done func()) {
 	// Quick assert before going asynchronous.
 	if _, ok := d.TreeIter(); !ok {
 		done()
 		return
 	}
 
-	if d.refreshing {
-		done()
-		return
-	}
-	d.refreshing = true
 	d.SetSensitive(false)
 
 	if d.temp != nil {
@@ -217,9 +255,8 @@ func (d *TreeDir) refresh(ctx context.Context, done func()) {
 	}
 
 	finalize := func() {
-		done()
 		d.SetSensitive(true)
-		d.refreshing = false
+		done()
 	}
 
 	gtkutil.Async(ctx, func() func() {
@@ -334,6 +371,15 @@ func (r *treeRoot) RootIter() *gtk.TreeIter {
 	return iter
 }
 
+// IterPath returns the file path from the given TreeIter.
+func (r *treeRoot) IterPath(iter *gtk.TreeIter) string {
+	// TODO: figure out a more optimized way. We can keep track of gtk.TreePath
+	// strings to all entries.
+	pathValue := r.store.Value(iter, columnPath)
+	path := pathValue.String()
+	return path
+}
+
 // EntryFromTreePath returns the TreeEntry from the TreePath.
 func (r *treeRoot) EntryFromTreePath(path *gtk.TreePath) TreeEntry {
 	it, ok := r.store.Iter(path)
@@ -342,15 +388,6 @@ func (r *treeRoot) EntryFromTreePath(path *gtk.TreePath) TreeEntry {
 	}
 
 	return r.Entry(r.IterPath(it))
-}
-
-// IterPath returns the file path from the given TreeIter.
-func (r *treeRoot) IterPath(iter *gtk.TreeIter) string {
-	// TODO: figure out a more optimized way. We can keep track of gtk.TreePath
-	// strings to all entries.
-	pathValue := r.store.Value(iter, columnPath)
-	path := pathValue.String()
-	return path
 }
 
 // Entry gets the TreeEntry value from the given path. If the path is not
@@ -373,6 +410,13 @@ func (r *treeRoot) Entry(path string) TreeEntry {
 // found, then f(nil) is called and the function returns. If f returns false
 // during the walk, then the function also returns.
 func (r *treeRoot) WalkEntry(path string, f func(TreeEntry) bool) {
+	r.ResolveEntry(nil, path, f)
+}
+
+// ResolveEntry is like WalkEntry, except if any of the tree directories are
+// uninitialized, it'll do that asynchronously, and f will be called at a later
+// point once that happens.
+func (r *treeRoot) ResolveEntry(ctx context.Context, path string, f func(TreeEntry) bool) {
 	// This whole process appears to take from 3us to 160us with maximum 3
 	// levels deep. That's pretty good.
 
@@ -389,9 +433,20 @@ func (r *treeRoot) WalkEntry(path string, f func(TreeEntry) bool) {
 	}
 
 	parts := strings.Split(path, string(filepath.Separator))
-	dir := &r.TreeDir
+	r.walkEntry(ctx, &r.TreeDir, parts, f)
+}
 
+func (r *treeRoot) walkEntry(ctx context.Context, dir *TreeDir, parts []string, f func(TreeEntry) bool) {
 	for i, part := range parts {
+		if !dir.IsInitialized() {
+			if ctx != nil {
+				// If the directory isn't initialized yet, then we initialize it
+				// and walk the same directory again once it has been.
+				dir.Init(ctx, func() { r.walkEntry(ctx, dir, parts[i:], f) })
+			}
+			return
+		}
+
 		entry, ok := dir.child[part]
 		if !ok {
 			f(nil)

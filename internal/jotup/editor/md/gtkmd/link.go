@@ -1,4 +1,4 @@
-package gmd
+package gtkmd
 
 import (
 	"encoding/json"

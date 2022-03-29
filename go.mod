@@ -2,16 +2,15 @@ module github.com/diamondburned/jotup
 
 go 1.17
 
-replace github.com/diamondburned/gotk4-lasem/pkg => ../gotk4-lasem/pkg
-replace github.com/diamondburned/gotkit => ../gotkit
+replace github.com/diamondburned/gotk4/pkg => ../gotk4/pkg
 
 require (
 	github.com/alecthomas/chroma v0.10.0
 	github.com/diamondburned/adaptive v0.0.2-0.20220310010129-223946f508ed
-	github.com/diamondburned/gotk4-lasem/pkg v0.0.0-20220303014905-20a0728c64dc
+	github.com/diamondburned/gotk4-lasem/pkg v0.0.0-20220314110426-fe5fd13e1fe2
 	github.com/diamondburned/gotk4-sourceview/pkg v0.0.0-20220306222419-7ffb5ae56adf
 	github.com/diamondburned/gotk4/pkg v0.0.0-20220305042118-cfb7981704dc
-	github.com/diamondburned/gotkit v0.0.0-20220311085936-5cbf9f466027
+	github.com/diamondburned/gotkit v0.0.0-20220315225037-c8c19c6d4d04
 	github.com/dop251/goja v0.0.0-20220214123719-b09a6bfa842f
 	github.com/dop251/goja_nodejs v0.0.0-20210225215109-d91c329300e7
 	github.com/go-git/go-git/v5 v5.4.2

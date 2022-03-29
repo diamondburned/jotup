@@ -14,7 +14,7 @@ import (
 	"github.com/diamondburned/gotkit/app/prefs"
 	"github.com/diamondburned/gotkit/gtkutil"
 	"github.com/diamondburned/gotkit/gtkutil/cssutil"
-	"github.com/diamondburned/jotup/internal/ui/components/toast"
+	"github.com/diamondburned/jotup/internal/jotup/components/toast"
 
 	coreglib "github.com/diamondburned/gotk4/pkg/core/glib"
 )
@@ -120,21 +120,20 @@ type Controller interface {
 type View struct {
 	*gtk.Overlay
 	Toast *toast.Toast
-	Box   struct {
-		*gtk.Box
-		View    *gtksource.View
-		Preview *gtk.Box // TODO
-	}
+
+	Box     *gtk.Box
+	Source  *gtksource.View
+	Preview *gtk.Box
+
+	Minimap *gtksource.Map
+	Buffer  *gtksource.Buffer
+	File    *gtksource.File
 
 	progrev  *gtk.Revealer
 	progress *gtk.ProgressBar
 
 	ctx  context.Context
 	ctrl Controller
-
-	minimap *gtksource.Map
-	buffer  *gtksource.Buffer
-	file    *gtksource.File
 
 	path    string
 	untrack bool // only change within AskBufferDestroy
@@ -169,40 +168,40 @@ var minimapCSS = cssutil.Applier("editor-minimap", `
 // NewView creates a new View.
 func NewView(ctx context.Context, ctrl Controller) *View {
 	v := View{ctx: ctx, ctrl: ctrl}
-	v.file = gtksource.NewFile()
-	v.buffer = gtksource.NewBuffer(nil)
-	v.buffer.ConnectChanged(func() { v.markEdited(true) })
+	v.File = gtksource.NewFile()
+	v.Buffer = gtksource.NewBuffer(nil)
+	v.Buffer.ConnectChanged(func() { v.markEdited(true) })
 
 	v.Toast = toast.NewToast(gtk.PackStart)
 	v.Toast.SetLog(true)
 	v.Toast.SetTimeout(5 * time.Second)
 
-	v.Box.View = gtksource.NewViewWithBuffer(v.buffer)
-	v.Box.View.SetEnableSnippets(true)
-	v.Box.View.SetMonospace(true)
-	v.Box.View.SetEditable(false)
-	v.Box.View.SetBottomMargin(100)
+	v.Source = gtksource.NewViewWithBuffer(v.Buffer)
+	v.Source.SetEnableSnippets(true)
+	v.Source.SetMonospace(true)
+	v.Source.SetEditable(false)
+	v.Source.SetBottomMargin(100)
 
-	gutterChange := func() { moveLineNumLast(v.Box.View) }
-	bindBoolProp(v.Box.View, showLineMarks, "show-line-marks", gutterChange)
-	bindBoolProp(v.Box.View, showLineNumbers, "show-line-numbers", gutterChange)
-	bindBoolProp(v.Box.View, insertSpaces, "insert-spaces-instead-of-tabs")
-	bindBoolProp(v.Box.View, highlightCurrentLine, "highlight-current-line")
-	bindBoolProp(v.Box.View, autoIndent, "auto-indent")
+	gutterChange := func() { moveLineNumLast(v.Source) }
+	bindBoolProp(v.Source, showLineMarks, "show-line-marks", gutterChange)
+	bindBoolProp(v.Source, showLineNumbers, "show-line-numbers", gutterChange)
+	bindBoolProp(v.Source, insertSpaces, "insert-spaces-instead-of-tabs")
+	bindBoolProp(v.Source, highlightCurrentLine, "highlight-current-line")
+	bindBoolProp(v.Source, autoIndent, "auto-indent")
 
-	bindIntProp(v.Box.View, tabWidth, "tab-width")
-	bindIntProp(v.Box.View, lineIndent, "indent")
-	bindIntProp(v.Box.View, columnLine, "right-margin-position", func() {
-		v.Box.View.SetShowRightMargin(columnLine.Value() > 0)
+	bindIntProp(v.Source, tabWidth, "tab-width")
+	bindIntProp(v.Source, lineIndent, "indent")
+	bindIntProp(v.Source, columnLine, "right-margin-position", func() {
+		v.Source.SetShowRightMargin(columnLine.Value() > 0)
 	})
 
-	highlightSyntax.SubscribeWidget(v.Box.View, func() {
-		v.buffer.SetHighlightSyntax(highlightSyntax.Value())
+	highlightSyntax.SubscribeWidget(v.Source, func() {
+		v.Buffer.SetHighlightSyntax(highlightSyntax.Value())
 	})
 
-	scheme.SubscribeWidget(v.Box.View, func() {
-		scheme := scheme.GuessValue(v.Box.View)
-		v.buffer.SetStyleScheme(scheme)
+	scheme.SubscribeWidget(v.Source, func() {
+		scheme := scheme.GuessValue(v.Source)
+		v.Buffer.SetStyleScheme(scheme)
 
 		v.RemoveCSSClass("editor-dark")
 		if schemeIsDark(scheme) {
@@ -210,48 +209,48 @@ func NewView(ctx context.Context, ctrl Controller) *View {
 		}
 	})
 
-	lineWrap.SubscribeWidget(v.Box.View, func() {
+	lineWrap.SubscribeWidget(v.Source, func() {
 		if lineWrap.Value() {
-			v.Box.View.SetWrapMode(gtk.WrapWordChar)
+			v.Source.SetWrapMode(gtk.WrapWordChar)
 		} else {
-			v.Box.View.SetWrapMode(gtk.WrapNone)
+			v.Source.SetWrapMode(gtk.WrapNone)
 		}
 	})
 
 	textScroll := gtk.NewScrolledWindow()
 	textScroll.SetVExpand(true)
 	textScroll.SetHExpand(true)
-	textScroll.SetChild(v.Box.View)
+	textScroll.SetChild(v.Source)
 
 	minimapBox := gtk.NewBox(gtk.OrientationHorizontal, 0)
 	minimapBox.Append(textScroll)
 
-	showMinimap.SubscribeWidget(v.Box.View, func() {
-		if v.minimap != nil {
-			minimapBox.Remove(v.minimap)
+	showMinimap.SubscribeWidget(v.Source, func() {
+		if v.Minimap != nil {
+			minimapBox.Remove(v.Minimap)
 			textScroll.SetPolicy(gtk.PolicyAutomatic, gtk.PolicyAlways)
-			v.minimap = nil
+			v.Minimap = nil
 		}
 
 		if showMinimap.Value() {
-			v.minimap = gtksource.NewMap()
-			v.minimap.SetView(v.Box.View)
-			v.minimap.SetHAlign(gtk.AlignEnd)
-			v.minimap.SetVAlign(gtk.AlignFill)
-			v.minimap.SetVExpand(true)
-			minimapCSS(v.minimap)
+			v.Minimap = gtksource.NewMap()
+			v.Minimap.SetView(v.Source)
+			v.Minimap.SetHAlign(gtk.AlignEnd)
+			v.Minimap.SetVAlign(gtk.AlignFill)
+			v.Minimap.SetVExpand(true)
+			minimapCSS(v.Minimap)
 
-			minimapBox.Append(v.minimap)
+			minimapBox.Append(v.Minimap)
 			textScroll.SetPolicy(gtk.PolicyAutomatic, gtk.PolicyExternal)
 		}
 	})
 
-	v.Box.Preview = gtk.NewBox(gtk.OrientationHorizontal, 0)
+	v.Preview = gtk.NewBox(gtk.OrientationHorizontal, 0)
 
-	v.Box.Box = gtk.NewBox(gtk.OrientationVertical, 0)
+	v.Box = gtk.NewBox(gtk.OrientationVertical, 0)
 	v.Box.AddCSSClass("editor-viewbox")
 	v.Box.Append(minimapBox)
-	v.Box.Append(v.Box.Preview)
+	v.Box.Append(v.Preview)
 
 	v.progress = gtk.NewProgressBar()
 	v.progress.AddCSSClass("osd")
@@ -292,120 +291,12 @@ func NewView(ctx context.Context, ctrl Controller) *View {
 
 	gtkutil.BindKeys(v, map[string]func() bool{
 		"<Ctrl>S": func() bool {
-			v.SetBusy(false)
-			v.Save(func(err error) { v.UnsetBusy() })
+			v.Save()
 			return true
 		},
 	})
 
 	return &v
-}
-
-// SetOrientation sets the View's orientation, which determines whether the
-// preview is at the right or at the bottom.
-func (v *View) SetOrientation(orientation gtk.Orientation) {
-	v.Box.SetOrientation(orientation)
-}
-
-// Path returns the View's path to the currently edited file.
-func (v *View) Path() string {
-	return v.path
-}
-
-// Load asynchronously loads the file at path into the buffer.
-func (v *View) Load(path string) {
-	v.LoadFile(gio.NewFileForPath(path))
-}
-
-// LoadFile asynchronously loads the gio.File into the buffer.
-func (v *View) LoadFile(file gio.Filer) {
-	v.ctrl.AskBufferDestroy(func() {
-		v.path = file.Path()
-		v.file.SetLocation(file)
-		v.Refresh()
-	})
-}
-
-// SetBusy sets the editor into a busy state. If disable is true, then the user
-// cannot interact with the editor.
-func (v *View) SetBusy(disable bool) {
-	v.Box.SetSensitive(!disable)
-	v.progrev.SetRevealChild(true)
-}
-
-// UnsetBusy unsets busy state.
-func (v *View) UnsetBusy() {
-	v.Box.SetSensitive(true)
-	v.progrev.SetRevealChild(false)
-}
-
-// Refresh refreshes the editor to reload the current file.
-func (v *View) Refresh() {
-	v.untrack = true
-	v.SetBusy(true)
-
-	loader := gtksource.NewFileLoader(v.buffer, v.file)
-	loader.LoadAsync(v.ctx, int(glib.PriorityHigh), nil, func(result gio.AsyncResulter) {
-		v.UnsetBusy()
-		v.untrack = false
-
-		if err := loader.LoadFinish(result); err != nil {
-			v.buffer.Delete(v.buffer.Bounds())
-			v.buffer.InsertMarkup(v.buffer.StartIter(), fmt.Sprintf(
-				`<span color="red"><b>Error:</b></span> %s`,
-				html.EscapeString(err.Error()),
-			))
-
-			// Ensure the buffer is at a fresh state and can't be saved.
-			v.buffer.SetLanguage(nil)
-			v.file.SetLocation(nil)
-			v.Box.View.SetEditable(false)
-			return
-		}
-
-		file := v.file.Location()
-		langman := gtksource.LanguageManagerGetDefault()
-		v.buffer.SetLanguage(langman.GuessLanguage(file.Basename(), ""))
-		v.Box.View.SetEditable(true)
-	})
-}
-
-// Save asynchronously saves the file. The given callback is invoked when it's
-// done.
-func (v *View) Save(done func(error)) {
-	v.SetBusy(false)
-
-	saver := gtksource.NewFileSaver(v.buffer, v.file)
-	saver.SaveAsync(v.ctx, int(glib.PriorityHigh), nil, func(result gio.AsyncResulter) {
-		v.UnsetBusy()
-
-		if err := saver.SaveFinish(result); err != nil {
-			v.Toast.Show("Error: " + err.Error())
-			done(err)
-		} else {
-			v.markEdited(false)
-			done(nil)
-		}
-	})
-}
-
-// IsUnsaved returns true if the View still has changes that haven't been saved
-// yet.
-func (v *View) IsUnsaved() bool { return v.unsaved }
-
-// DiscardChanges resets the unsaved state. The buffer isn't actually refreshed,
-// so it still contains unsaved changes. The caller should manually refresh it
-// if the buffer isn't going to be wiped.
-func (v *View) DiscardChanges() {
-	v.unsaved = false
-	v.ctrl.InvalidateUnsaved()
-}
-
-func (v *View) markEdited(edited bool) {
-	if !v.untrack {
-		v.unsaved = edited
-		v.ctrl.InvalidateUnsaved()
-	}
 }
 
 func isGutterRendererText(obj glib.Objector) bool {
@@ -429,5 +320,152 @@ func moveLineNumLast(view *gtksource.View) {
 			gutter.Reorder(w.(gtksource.GutterRendererer), num)
 			break
 		}
+	}
+}
+
+// SetOrientation sets the View's orientation, which determines whether the
+// preview is at the right or at the bottom.
+func (v *View) SetOrientation(orientation gtk.Orientation) {
+	v.Box.SetOrientation(orientation)
+}
+
+// Path returns the View's path to the currently edited file.
+func (v *View) Path() string {
+	return v.path
+}
+
+// Load asynchronously loads the file at path into the buffer.
+func (v *View) Load(path string) {
+	v.LoadFile(gio.NewFileForPath(path))
+}
+
+// LoadFile asynchronously loads the gio.File into the buffer.
+func (v *View) LoadFile(file gio.Filer) {
+	v.ctrl.AskBufferDestroy(func() {
+		v.path = file.Path()
+		v.File.SetLocation(file)
+		v.Refresh()
+	})
+}
+
+// SetBusy sets the editor into a busy state. If disable is true, then the user
+// cannot interact with the editor.
+func (v *View) SetBusy(disable bool) {
+	v.Box.SetSensitive(!disable)
+	v.progrev.SetRevealChild(true)
+}
+
+// UnsetBusy unsets busy state.
+func (v *View) UnsetBusy() {
+	v.Box.SetSensitive(true)
+	v.progrev.SetRevealChild(false)
+}
+
+// Refresh refreshes the editor to reload the current file.
+func (v *View) Refresh() {
+	v.untrack = true
+	v.SetBusy(true)
+
+	loader := gtksource.NewFileLoader(v.Buffer, v.File)
+	loader.LoadAsync(v.ctx, int(glib.PriorityHigh), nil, func(result gio.AsyncResulter) {
+		defer func() {
+			v.UnsetBusy()
+			v.untrack = false
+		}()
+
+		if err := loader.LoadFinish(result); err != nil {
+			v.Clear()
+			v.Buffer.InsertMarkup(v.Buffer.StartIter(), fmt.Sprintf(
+				`<span color="red"><b>Error:</b></span> %s`,
+				html.EscapeString(err.Error()),
+			))
+			return
+		}
+
+		file := v.File.Location()
+		langman := gtksource.LanguageManagerGetDefault()
+		v.Buffer.SetLanguage(langman.GuessLanguage(file.Basename(), ""))
+		v.Source.SetEditable(true)
+	})
+}
+
+// Save asynchronously saves the file.
+func (v *View) Save() {
+	v.save(nil)
+}
+
+func (v *View) save(done func(error)) {
+	v.SetBusy(false)
+
+	saver := gtksource.NewFileSaver(v.Buffer, v.File)
+	saver.SaveAsync(v.ctx, int(glib.PriorityHigh), nil, func(result gio.AsyncResulter) {
+		v.UnsetBusy()
+
+		err := saver.SaveFinish(result)
+		if err != nil {
+			v.Toast.Show("Error: " + err.Error())
+		} else {
+			v.markEdited(false)
+		}
+
+		if done != nil {
+			done(err)
+		}
+	})
+}
+
+// IsUnsaved returns true if the View still has changes that haven't been saved
+// yet.
+func (v *View) IsUnsaved() bool { return v.unsaved }
+
+// Clear clears the buffer. It only works if the buffer has been saved.
+func (v *View) Clear() {
+	// Allow clearing while we're not tracking, so we can call this internally.
+	if !v.untrack || !v.unsaved {
+		v.Buffer.SetText("")
+		v.Buffer.SetLanguage(nil)
+		v.File.SetLocation(nil)
+		v.Source.SetEditable(false)
+	}
+}
+
+// DiscardChanges resets the unsaved state. The buffer isn't actually refreshed,
+// so it still contains unsaved changes. The caller should manually refresh it
+// if the buffer isn't going to be wiped.
+func (v *View) DiscardChanges() {
+	v.unsaved = false
+	v.ctrl.InvalidateUnsaved()
+}
+
+func (v *View) markEdited(edited bool) {
+	if !v.untrack {
+		v.unsaved = edited
+		v.ctrl.InvalidateUnsaved()
+	}
+}
+
+// ActionFuncs returns the editor actions for a menu. The prefix is "editor.".
+func (v *View) ActionFuncs() map[string]func() {
+	emit := func(name string, args ...interface{}) func() {
+		return func() { v.Source.Emit(name, args...) }
+	}
+	return map[string]func(){
+		"editor.save":                     v.Save,
+		"editor.undo":                     func() { v.Buffer.Emit("undo") },
+		"editor.redo":                     func() { v.Buffer.Emit("redo") },
+		"editor.cut":                      emit("cut-clipboard"),
+		"editor.copy":                     emit("copy-clipboard"),
+		"editor.paste":                    emit("paste-clipboard"),
+		"editor.select-all":               emit("select-all", true),
+		"editor.unselect-all":             emit("select-all", false),
+		"editor.insert-emojis":            emit("insert-emojis"),
+		"editor.move-line-up":             emit("move-lines", false),
+		"editor.move-line-down":           emit("move-lines", true),
+		"editor.join-lines":               emit("join-lines"),
+		"editor.move-to-matching-bracket": emit("move-to-matching-bracket"),
+		"editor.change-case-lower":        emit("change-case", gtksource.SourceChangeCaseLower),
+		"editor.change-case-upper":        emit("change-case", gtksource.SourceChangeCaseUpper),
+		"editor.change-case-toggle":       emit("change-case", gtksource.SourceChangeCaseToggle),
+		"editor.change-case-title":        emit("change-case", gtksource.SourceChangeCaseTitle),
 	}
 }

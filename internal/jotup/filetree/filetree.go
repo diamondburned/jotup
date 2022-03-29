@@ -23,6 +23,7 @@ type Tree struct {
 
 	ctx  context.Context
 	root treeRoot
+	cols []*gtk.TreeViewColumn // for convenience
 }
 
 var loadingCSS = cssutil.Applier("filetree-loading", `
@@ -49,7 +50,10 @@ var boxCSS = cssutil.Applier("filetree-box", `
 
 // NewTree creates a new Tree.
 func NewTree(ctx context.Context) *Tree {
-	t := Tree{ctx: ctx}
+	t := Tree{
+		ctx:  ctx,
+		cols: newTreeColumns(),
+	}
 
 	t.Scroll.View = gtk.NewTreeView()
 	t.Scroll.View.AddCSSClass("filetree-view")
@@ -60,7 +64,7 @@ func NewTree(ctx context.Context) *Tree {
 	t.Scroll.View.SetActivateOnSingleClick(true)
 	t.Scroll.View.SetRubberBanding(true)
 
-	for i, col := range newTreeColumns() {
+	for i, col := range t.cols {
 		t.Scroll.View.InsertColumn(col, i)
 	}
 
@@ -133,10 +137,17 @@ func (t *Tree) Load(path string) {
 		panic("Load not given an absolute path: " + path)
 	}
 
-	t.root = newTreeRoot(path)
-	t.Scroll.View.SetModel(t.root.Model())
+	if t.root.filePath != path {
+		t.root = newTreeRoot(path)
+		t.Scroll.View.SetModel(t.root.Model())
+	}
 
 	t.Refresh()
+}
+
+// Path returns the file tree's currtn root path.
+func (t *Tree) Path() string {
+	return t.root.filePath
 }
 
 // ConnectFileActivated connects f to be called when a file is selected. It
@@ -185,6 +196,23 @@ func (t *Tree) SetUnsaved(path string, unsaved bool) {
 		case *TreeFile:
 			entry.SetUnsaved(unsaved)
 		}
+		return true
+	})
+}
+
+// SelectPath expands the file tree to the directory containing the given path
+// and selects it. The activation signal is fired.
+func (t *Tree) SelectPath(path string) {
+	t.root.ResolveEntry(t.ctx, path, func(entry TreeEntry) bool {
+		t.Scroll.View.ExpandToPath(entry.TreePath())
+
+		if !entry.IsDir() {
+			sel := t.Scroll.View.Selection()
+			sel.SelectPath(entry.TreePath())
+
+			t.Scroll.View.RowActivated(entry.TreePath(), t.cols[0])
+		}
+
 		return true
 	})
 }
